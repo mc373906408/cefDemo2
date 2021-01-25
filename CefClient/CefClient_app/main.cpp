@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
     QCefView::getInstance()->init(&qmlView,&cef);
 
     QUrl url(QCoreApplication::applicationDirPath()+"/html/404.html");
-    QCefView::getInstance()->openWindow("404","",url.toString(),"0,0,800,800","Center","VCenter","","","");
+    QCefView::getInstance()->openUrl("404","",url.toString(),"0,0,800,800","Center","VCenter","","","");
 
     qmlView.show();
     QCefView::getInstance()->doEveryLoop();

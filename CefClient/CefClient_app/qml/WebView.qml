@@ -66,7 +66,7 @@ Item {
                 cppCef.closeWindow(json["Close"])
             }
             if(json["Open"]!==undefined){
-                cppCef.openWindow(json["Open"],json["Father"],json["IE"],json["Url"],json["RECT"],json["Align"],json["VAlign"],json["NeedHide"],json["LostFocusHide"],json["Front"])
+                cppCef.openUrl(json["Open"],json["Father"],json["Url"],json["RECT"],json["Align"],json["VAlign"],json["NeedHide"],json["LostFocusHide"],json["Front"])
                 callback(name,createSuccessMsg(str.id,request,cppCef.getCefClients(json["Father"])))
                 /*打开菜单不发送*/
                 if(json["LostFocusHide"]!=="1"){
@@ -147,7 +147,7 @@ Item {
                 callback(json["GetAllData"],createSuccessMsg(str.id,request,JSON.stringify(data)))
             }
             if(json["OpenVideo"]!==undefined){
-                cppCef.openVideo(json["RECT"])
+                cppCef.openWindow(json["OpenVideo"],json["Father"],json["RECT"],json["Align"],json["VAlign"],json["NeedHide"],json["LostFocusHide"],json["Front"])
             }
         }
     }

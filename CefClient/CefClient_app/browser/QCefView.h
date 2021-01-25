@@ -3,7 +3,7 @@
 
 #include <QTimer>
 #include <QWindow>
-#include <QSystemTrayIcon>
+#include <QJsonObject>
 
 #include "include/cef_app.h"
 
@@ -17,6 +17,7 @@ struct CefClientStruct{
     CefRefPtr<QCefClient> client;  //cef智能指针
     int identifier;  //cef唯一id
     QWindow* root=nullptr;  //本窗口指针
+    QObject* father=nullptr; //父窗口指针
     QWindow* cefWnd;  //cef子窗口指针
     int width;
     int height;
@@ -39,8 +40,8 @@ struct CefClientStruct{
     bool isMax=false;
     bool isFull=false;
     bool isFront=false;
-    QWindow::Visibility m_Visibility;
     bool isShow=true;  //用于修复自动窗口显示bug
+    QJsonObject json;
 };
 
 
@@ -80,8 +81,11 @@ public:
     /*关闭指定窗口*/
     Q_INVOKABLE void closeWindow(QString objectName);
 
-    /*打开新窗口*/
-    Q_INVOKABLE void openWindow(QString objectName,QString fatherName,QString url,QString rect,QString align,QString valign,QString needHide,QString lostFocusHide,QString front,bool visible=true);
+    /*打开网页*/
+    Q_INVOKABLE void openUrl(const QString &objectName/*当前窗口名字*/,const QString &fatherName/*父窗口名字*/,const QString &url/*打开的网页*/,const QString &rect/*窗口宽高，初始位置*/,const QString &align/*水平居中，设置这个属性后rect初始位置失效*/,const QString &valign/*上下居中，设置这个属性后rect初始位置失效*/,const QString &needHide/*打开/切换其他标签页时隐藏*/,const QString &lostFocusHide/*失去焦点隐藏*/,const QString &front/*是否置顶*/,const bool &visible=true/*初始是否隐藏*/);
+
+    /*打开窗口*/
+    Q_INVOKABLE void openWindow(const QString &objectName/*当前窗口名字*/,const QString &fatherName/*父窗口名字*/,const QString &rect/*窗口宽高，初始位置*/,const QString &align/*水平居中，设置这个属性后rect初始位置失效*/,const QString &valign/*上下居中，设置这个属性后rect初始位置失效*/,const QString &needHide/*打开/切换其他标签页时隐藏*/,const QString &lostFocusHide/*失去焦点隐藏*/,const QString &front/*是否置顶*/,const bool &visible=true/*初始是否隐藏*/);
 
     /*切换窗口*/
     Q_INVOKABLE void switchWindow(QString objectName,QString needHide);
@@ -123,7 +127,7 @@ public:
     /*判断是否为标签页*/
     Q_INVOKABLE bool getNeedHide(QString objectName);
 
-    Q_INVOKABLE void openVideo(const QString &rect);
+
 
 
 
@@ -181,6 +185,10 @@ private:
 
 
     void windowMetamorphosis(CefClientStruct *cefClient,Metamorphosis mode);
+
+    QJsonObject getWindowJson(const QString &objectName/*当前窗口名字*/,const QString &fatherName/*父窗口名字*/,const QString &rect/*窗口宽高，初始位置*/,const QString &align/*水平居中，设置这个属性后rect初始位置失效*/,const QString &valign/*上下居中，设置这个属性后rect初始位置失效*/,const QString &lostFocusHide/*失去焦点隐藏*/,const QString &front/*是否置顶*/,const bool &visible/*初始是否隐藏*/);
+
+    CefClientStruct getWindowCefClientStruct(const QString &objectName, const QString &fatherName, const QString &rect, const QString &align, const QString &valign, const QString &needHide, const QString &lostFocusHide, const QString &front, const bool &visible);
 private:
     QTimer *m_cefTimer=nullptr;
     QWindow *m_window=nullptr;

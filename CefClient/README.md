@@ -17,6 +17,7 @@
 ## 构造步骤
 - CMake GUI 加载项目根目录CMakeLists.txt
 - 或者Qt Creator 加载项目根目录CMakeLists.txt
+- 注意需要指定QT_PATH，为本机的QT目录
 
 ## 构造目标
 - CefClient_app  Release(不可调试) 或  RelWithDebInfo(VS可调试)

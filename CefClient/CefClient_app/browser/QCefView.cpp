@@ -2,7 +2,6 @@
 #include <QUrl>
 #include <QDebug>
 
-#include <QJsonObject>
 #include <QJsonDocument>
 #include <QCursor>
 
@@ -164,6 +163,113 @@ void QCefView::windowMetamorphosis(CefClientStruct *cefClient, QCefView::Metamor
     }
 }
 
+QJsonObject QCefView::getWindowJson(const QString &objectName, const QString &fatherName, const QString &rect, const QString &align, const QString &valign, const QString &lostFocusHide, const QString &front, const bool &visible)
+{
+    QStringList m_rect=rect.split(',');
+    double zoom=CefClientShare::getInstance().getTools()->getNowZoomFactor(QCursor::pos());
+    int x=m_rect.at(0).toInt()*zoom;
+    int y=m_rect.at(1).toInt()*zoom;
+    int width=m_rect.at(2).toInt()*zoom-x;
+    int height=m_rect.at(3).toInt()*zoom-y;
+
+    QJsonObject json;
+    json["objectName"]=objectName;
+    json["x"]=x;
+    json["y"]=y;
+    json["width"]=width;
+    json["height"]=height;
+    json["visible"]=visible;
+    json["flags"]=(int)m_window->flags();
+
+    QRect p_rect;
+    /*找下父窗口存不存在*/
+    if(m_cefClients.contains(fatherName)){
+        CefClientStruct *cefClient= &m_cefClients[fatherName];
+        p_rect=QRect(cefClient->root->x(),cefClient->root->y(),cefClient->width,cefClient->height);
+        json["x"]=x+p_rect.x();
+        json["y"]=y+p_rect.y();
+        if(lostFocusHide!="1"){
+            json["width"]=width+cefClient->width-cefClient->beginWidth;
+            json["height"]=height+cefClient->height-cefClient->beginHeight;
+        }
+    }else{
+        p_rect=CefClientShare::getInstance().getTools()->getNowDesktopRect(QCursor::pos());
+    }
+
+    if(align=="Left"){
+        json["x"]=p_rect.x();
+    }else if(align=="Center"){
+        json["x"]=(p_rect.width()-width)/2+p_rect.x();
+    }else if(align=="Right"){
+        json["x"]=p_rect.width()-width+p_rect.x();
+    }
+    if(valign=="Top"){
+        json["y"]=p_rect.y();
+    }else if(valign=="VCenter"){
+        json["y"]=(p_rect.height()-height)/2+p_rect.y();
+    }else if(valign=="Bottom"){
+        json["y"]=p_rect.height()-height+p_rect.y();
+    }
+
+    if(front=="1"){
+        json["modality"]=(int)Qt::WindowModal;
+    }
+    json["flags"]=(int)m_window->flags();
+    json["visible"]=visible;
+
+    return json;
+}
+
+CefClientStruct QCefView::getWindowCefClientStruct(const QString &objectName, const QString &fatherName, const QString &rect, const QString &align, const QString &valign, const QString &needHide, const QString &lostFocusHide, const QString &front, const bool &visible)
+{
+    CefClientStruct m_CefClientStruct;
+    QJsonObject json=getWindowJson(objectName,fatherName,rect,align,valign,lostFocusHide,front,visible);
+    m_CefClientStruct.json=json;
+    m_CefClientStruct.objectName=objectName;
+    m_CefClientStruct.beginWidth=json["width"].toInt();
+    m_CefClientStruct.beginHeight=json["height"].toInt();
+
+    /*找下父窗口存不存在*/
+    QRect p_rect;
+    if(m_cefClients.contains(fatherName)){
+        CefClientStruct *cefClient= &m_cefClients[fatherName];
+        p_rect=QRect(cefClient->root->x(),cefClient->root->y(),cefClient->width,cefClient->height);
+
+        m_CefClientStruct.father=cefClient->root->focusObject();
+        /*加到父窗口队列中，并排在第一位*/
+        cefClient->children.push_front(objectName);
+        m_CefClientStruct.parent=cefClient->objectName;
+
+        if(needHide=="1"){
+            /*将父窗口的子窗口页面中其他需要隐藏的隐藏*/
+            for(auto cefClient=m_cefClients.begin();cefClient!=m_cefClients.constEnd();++cefClient){
+                if(cefClient.value().parent==fatherName&&cefClient.value().needHide){
+                    cefClient->root->setVisibility(QWindow::Hidden);
+                }
+            }
+            m_CefClientStruct.needHide=true;
+        }
+    }else{
+        p_rect=CefClientShare::getInstance().getTools()->getNowDesktopRect(QCursor::pos());
+    }
+
+    if(front=="1"){
+        m_CefClientStruct.isFront=true;
+    }
+
+    m_CefClientStruct.width=json["width"].toInt();
+    m_CefClientStruct.height=json["height"].toInt();
+    m_CefClientStruct.parent_left=json["x"].toInt()-p_rect.x();
+    m_CefClientStruct.parent_top=json["y"].toInt()-p_rect.y();
+    m_CefClientStruct.parent_right=p_rect.width()-(m_CefClientStruct.parent_left+json["width"].toInt());
+    m_CefClientStruct.parent_bottom=p_rect.height()-(m_CefClientStruct.parent_top+json["height"].toInt());
+
+    if(lostFocusHide=="1"){
+        m_CefClientStruct.lostFocusHide=true;
+    }
+    return m_CefClientStruct;
+}
+
 
 
 void QCefView::sendToWeb(QString objectName,QString msg)
@@ -251,106 +357,36 @@ void QCefView::closeWindow(QString objectName)
     }
 }
 
-
-
-void QCefView::openWindow(QString objectName,QString fatherName,QString url,QString rect,QString align,QString valign,QString needHide,QString lostFocusHide,QString front,bool visible)
+void QCefView::openUrl(const QString &objectName, const QString &fatherName, const QString &url, const QString &rect, const QString &align, const QString &valign, const QString &needHide, const QString &lostFocusHide, const QString &front, const bool &visible)
 {
     if(!m_cef){
         return;
     }
-    if(!m_cefClients.contains(objectName)){
-        CefClientStruct m_CefClientStruct;
-        QStringList m_rect=rect.split(',');
-        double zoom=CefClientShare::getInstance().getTools()->getNowZoomFactor(QCursor::pos());
-        int x=m_rect.at(0).toInt()*zoom;
-        int y=m_rect.at(1).toInt()*zoom;
-        int width=m_rect.at(2).toInt()*zoom-x;
-        int height=m_rect.at(3).toInt()*zoom-y;
-
-        QJsonObject json;
-        json["objectName"]=objectName;
-        json["x"]=x;
-        json["y"]=y;
-        json["width"]=width;
-        json["height"]=height;
-        m_CefClientStruct.beginWidth=json["width"].toInt();
-        m_CefClientStruct.beginHeight=json["height"].toInt();
-
-        QRect p_rect;
-        /*找下父窗口存不存在*/
-        QObject *m_father=nullptr;
-        if(m_cefClients.contains(fatherName)){
-            CefClientStruct *cefClient= &m_cefClients[fatherName];
-            p_rect=QRect(cefClient->root->x(),cefClient->root->y(),cefClient->width,cefClient->height);
-            json["x"]=x+p_rect.x();
-            json["y"]=y+p_rect.y();
-            if(lostFocusHide!="1"){
-                json["width"]=width+cefClient->width-cefClient->beginWidth;
-                json["height"]=height+cefClient->height-cefClient->beginHeight;
-            }
-            m_father=cefClient->root->focusObject();
-            /*加到父窗口队列中，并排在第一位*/
-            cefClient->children.push_front(objectName);
-            m_CefClientStruct.parent=cefClient->objectName;
-
-            if(needHide=="1"){
-                /*将父窗口的子窗口页面中其他需要隐藏的隐藏*/
-                for(auto cefClient=m_cefClients.begin();cefClient!=m_cefClients.constEnd();++cefClient){
-                    if(cefClient.value().parent==fatherName&&cefClient.value().needHide){
-                        cefClient->root->setVisibility(QWindow::Hidden);
-                    }
-                }
-                m_CefClientStruct.needHide=true;
-            }
-        }else{
-            p_rect=CefClientShare::getInstance().getTools()->getNowDesktopRect(QCursor::pos());
-        }
-        if(align=="Left"){
-            json["x"]=p_rect.x();
-        }else if(align=="Center"){
-            json["x"]=(p_rect.width()-width)/2+p_rect.x();
-        }else if(align=="Right"){
-            json["x"]=p_rect.width()-width+p_rect.x();
-        }
-        if(valign=="Top"){
-            json["y"]=p_rect.y();
-        }else if(valign=="VCenter"){
-            json["y"]=(p_rect.height()-height)/2+p_rect.y();
-        }else if(valign=="Bottom"){
-            json["y"]=p_rect.height()-height+p_rect.y();
-        }
-
-        if(front=="1"){
-            m_CefClientStruct.isFront=true;
-            json["modality"]=(int)Qt::WindowModal;
-        }
-        json["flags"]=(int)m_window->flags();
-        json["visible"]=visible;
-
-        m_CefClientStruct.width=json["width"].toInt();
-        m_CefClientStruct.height=json["height"].toInt();
-        m_CefClientStruct.parent_left=json["x"].toInt()-p_rect.x();
-        m_CefClientStruct.parent_top=json["y"].toInt()-p_rect.y();
-        m_CefClientStruct.parent_right=p_rect.width()-(m_CefClientStruct.parent_left+json["width"].toInt());
-        m_CefClientStruct.parent_bottom=p_rect.height()-(m_CefClientStruct.parent_top+json["height"].toInt());
-        emit sgOpenNewWindow(m_father,QString(QJsonDocument(json).toJson()));
-
-
-        CefRefPtr<QCefClient> client=m_cef->cefApp()->addBrowser(this,"app",false,url,width,height,0,0,nullptr);
-        m_CefClientStruct.client=client;
-
-        m_CefClientStruct.objectName=objectName;
-        m_CefClientStruct.url=url;
-
-        if(lostFocusHide=="1"){
-            m_CefClientStruct.lostFocusHide=true;
-        }
-        m_cefClients[objectName]=m_CefClientStruct;
-        m_cefClientsOpenList.append(QPair<QString,bool>(objectName,true));
-    }else{
+    if(m_cefClients.contains(objectName)){
         load(objectName,url);
+        return;
     }
+    CefClientStruct m_CefClientStruct=getWindowCefClientStruct(objectName,fatherName,rect,align,valign,needHide,lostFocusHide,front,visible);
+
+    CefRefPtr<QCefClient> client=m_cef->cefApp()->addBrowser(this,"app",false,url,m_CefClientStruct.width,m_CefClientStruct.height,0,0,nullptr);
+    m_CefClientStruct.client=client;
+    m_CefClientStruct.url=url;
+    m_cefClients[objectName]=m_CefClientStruct;
+    m_cefClientsOpenList.append(QPair<QString,bool>(objectName,true));
+    emit sgOpenNewWindow(m_CefClientStruct.father,QString(QJsonDocument(m_CefClientStruct.json).toJson()));
 }
+
+void QCefView::openWindow(const QString &objectName, const QString &fatherName, const QString &rect, const QString &align, const QString &valign, const QString &needHide, const QString &lostFocusHide, const QString &front, const bool &visible)
+{
+    if(m_cefClients.contains(objectName)){
+        return;
+    }
+    CefClientStruct m_CefClientStruct=getWindowCefClientStruct(objectName,fatherName,rect,align,valign,needHide,lostFocusHide,front,visible);
+    m_cefClients[objectName]=m_CefClientStruct;
+    m_cefClientsOpenList.append(QPair<QString,bool>(objectName,false));
+    emit sgOpenNewWindow(m_CefClientStruct.father,QString(QJsonDocument(m_CefClientStruct.json).toJson()));
+}
+
 
 void QCefView::switchWindow(QString objectName, QString needHide)
 {
@@ -516,64 +552,6 @@ bool QCefView::getNeedHide(QString objectName)
         return cefClient->needHide;
     }
     return false;
-}
-
-
-void QCefView::openVideo(const QString &rect)
-{
-    QString objectName="video";
-    if(m_cefClients.contains(objectName)){
-        return;
-    }
-    CefClientStruct m_CefClientStruct;
-    QStringList m_rect=rect.split(',');
-    double zoom=CefClientShare::getInstance().getTools()->getNowZoomFactor(QCursor::pos());
-    int x=m_rect.at(0).toInt()*zoom;
-    int y=m_rect.at(1).toInt()*zoom;
-    int width=m_rect.at(2).toInt()*zoom-x;
-    int height=m_rect.at(3).toInt()*zoom-y;
-
-    QJsonObject json;
-    json["objectName"]=objectName;
-    json["x"]=x;
-    json["y"]=y;
-    json["width"]=width;
-    json["height"]=height;
-    json["visible"]=true;
-    json["flags"]=(int)m_window->flags();
-
-    m_CefClientStruct.beginWidth=json["width"].toInt();
-    m_CefClientStruct.beginHeight=json["height"].toInt();
-
-    /*找下父窗口存不存在*/
-    QRect p_rect;
-    QObject *m_father=nullptr;
-    QString fatherName="404";
-    if(m_cefClients.contains(fatherName)){
-        CefClientStruct *cefClient= &m_cefClients[fatherName];
-        p_rect=QRect(cefClient->root->x(),cefClient->root->y(),cefClient->width,cefClient->height);
-        json["x"]=x+p_rect.x();
-        json["y"]=y+p_rect.y();
-        m_father=cefClient->root->focusObject();
-        /*加到父窗口队列中，并排在第一位*/
-        cefClient->children.push_front(objectName);
-        m_CefClientStruct.parent=cefClient->objectName;
-    }else{
-        p_rect=CefClientShare::getInstance().getTools()->getNowDesktopRect(QCursor::pos());
-    }
-
-    m_CefClientStruct.width=json["width"].toInt();
-    m_CefClientStruct.height=json["height"].toInt();
-    m_CefClientStruct.parent_left=json["x"].toInt()-p_rect.x();
-    m_CefClientStruct.parent_top=json["y"].toInt()-p_rect.y();
-    m_CefClientStruct.parent_right=p_rect.width()-(m_CefClientStruct.parent_left+json["width"].toInt());
-    m_CefClientStruct.parent_bottom=p_rect.height()-(m_CefClientStruct.parent_top+json["height"].toInt());
-    m_CefClientStruct.objectName=objectName;
-    m_cefClients[objectName]=m_CefClientStruct;
-
-    emit sgOpenNewWindow(m_father,QString(QJsonDocument(json).toJson()));
-
-    m_cefClientsOpenList.append(QPair<QString,bool>(objectName,false));
 }
 
 
